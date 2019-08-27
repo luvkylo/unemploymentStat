@@ -1,0 +1,256 @@
+---
+title: "Project 2"
+author: "Alvin Ng, Austin Lee, Yi Ran Wang, Ruixi Zhou"
+output: pdf_document
+---
+
+## Introduction
+
+This report looks at the relation between monthly attendence at a non-profit children's museum and Irvine's unemployment data. Both datasets contain data from Sept 2009 to Dec 2018. The monthly unemployment dataset was obtained from State of California Employment Development Department, and the monthly attendence dataset was provided by the non-profit with adjustments by Alvin Ng. We will attempt to forecast the monthly attendence using information from the Irvine unemployment data. 
+
+We are using the unemployment data because we believe that if unemployment increases or decreases, change in monthly attendence.
+
+## Results
+
+## a.) Time Series Plot
+
+```{r}
+library(readxl)
+library(tseries)
+library(forecast)
+Attendence_data <- read_excel("PretendCity Daily Attendence.xlsx", 
+    sheet = "Monthly")
+unemployment_data <- read_excel("Local-Area-Unemployment-Statistics.xlsx", 
+    sheet = "Data")
+
+Attendence <- ts(Attendence_data$Attendence, start = c(2009, 9), freq = 12)
+Unemployment <- ts(unemployment_data$Unemployment, start = c(2009, 9), freq = 12)
+
+tsdisplay(Attendence)
+```
+
+```{r}
+tsdisplay(Unemployment)
+```
+
+## b.) Trend, Seasonality, Cyclical
+
+## Quaduratic Trend with seasonal but no ARIMA
+
+```{r}
+t <- seq(2009+(8/12), 2018.96,length=length(Attendence))
+t2 <- t^2
+Attendence_half_model <- tslm(Attendence~ t + I(t^2) + season)
+summary(Attendence_half_model)
+AIC(Attendence_half_model)
+BIC(Attendence_half_model)
+```
+
+## Quaduratic Trend with ARIMA seasonal
+
+```{r}
+Attendence_model <- tslm(Attendence~ t + t2)
+summary(Attendence_model)
+```
+
+```{r}
+plot(Attendence)
+lines(Attendence_model$fitted.values, col="red")
+```
+
+```{r}
+Attendence_full_model <- auto.arima(Attendence)
+summary(Attendence_full_model)
+```
+
+```{r}
+plot(Attendence)
+lines(Attendence_full_model$fitted, col="red")
+```
+
+Since modeling without ARIMA gave us a higher AIC and BIC, we selected the model with trend capture by the AR process - AR(3), with S-AR(1) 12 period, drift enabled, and MA(1) to capture the short term effect. The fitted values from the model fit the actual values well with exception of the time period before 2011. 
+
+## Unemployment data
+
+## Linear trend with seasonal
+
+```{r}
+Unemployment_half_model <- tslm(Unemployment~trend + season)
+summary(Unemployment_half_model)
+AIC(Unemployment_half_model)
+BIC(Unemployment_half_model)
+```
+
+```{r}
+Unemployment_full_model <- auto.arima(Unemployment)
+summary(Unemployment_full_model)
+```
+
+```{r}
+plot(Unemployment)
+lines(Unemployment_full_model$fitted, col="red")
+```
+
+For the unemployment data, our model contains a linear trend, an AR(1) process with drift and a seasonal-AR(2) process with a 12 month period. The fitted values from the model seems to fit the actual data well. 
+
+## c.) Residual vs fitted values
+
+```{r}
+plot(as.vector(Attendence_full_model$fitted),
+     as.vector(Attendence_full_model$residuals), 
+     ylab="Residuals",
+     xlab="Fitted Values", main = "Fitted vs Residuals of Attendence")
+```
+
+```{r}
+plot(as.vector(Unemployment_full_model$fitted),
+     as.vector(Unemployment_full_model$residuals), 
+     ylab="Residuals",
+     xlab="Fitted Values", main = "Fitted vs Residuals of Unemployment")
+```
+
+Both fitted vs residuals plots seem to be evenly spread horizontally around zero, implying no bias is observed. 
+
+
+## e.) ACF and PACF of Residuals
+
+```{r}
+# Computing ACF and PACF of the residuals of Daily Attendance
+tsdisplay(Attendence_full_model$residuals, main = "Attendence Full Model Residuals")
+# Computing ACF and PACF of the residuals of Unemployment
+tsdisplay(Unemployment_full_model$residuals, main = "Unemployment Full Model Residuals")
+
+```
+
+For both models, the PACF and ACF indicate a white noise process because none of the lags spike past the area of significance. 
+
+## f.) Plot CUSUM
+
+```{r}
+library("strucchange")
+plot(efp(Attendence_full_model$residuals ~ 1, type = "Rec-CUSUM"))
+
+```
+
+There are no structural breaks within our attendence model since it does not move above or below the upper and lower bound. 
+
+```{r}
+plot(efp(Unemployment_full_model$residuals ~ 1, type = "Rec-CUSUM")) 
+```
+ 
+When looking at the recursive cumsum for the unemployment model, there are no structural breaks within our model.
+
+## g.) Recursive Residuals 
+
+```{r}
+library("strucchange")
+rr.attendence <- recresid(Attendence_full_model$residuals ~ 1 )
+plot(rr.attendence)
+
+rr.unemployment <- recresid(Unemployment_full_model$residuals ~ 1 )
+plot(rr.unemployment)
+```
+
+By looking at the recursive residuals, we can investigate the fit of our model. The plot suggests that our residuals are independently and identically distributed about 0. 
+
+
+#Diagnostic Statistics 
+
+```{r}
+library('forecast')
+print("Attendence Model Diagnostics:")
+accuracy(Attendence_full_model)
+print("Unemployment Model Diagnostics:")
+accuracy(Unemployment_full_model)
+
+```
+
+When looking at the Attendence model's diagnostics, we can see that we have a ME(Mean Error) of 168.20,RMSE(Root Mean Squared Error) of 1322.19 ,MAE(Mean Absolute Error) 1001.043,MPE(Mean Percentage Error) 7.121, MAPE(Mean Absolute Percentage Error) 7.121, MASE(Mean Absolute Squared Error)of .674, and ACF1 of -.00352. The MAPE is at 7.12% which is considerably high, meaning the absolute percentage difference between actual data and fitted is about 7%. We can see that this would also mean that the MPE is also high. However, as previously mentioned, we have eliminated ACF and PACF to white noise, as hinted with the ACF1 at an insignificant value.  
+
+When looking at the Unemployment model's diagnostics, we can see that we have a ME(Mean Error) of 32.16,RMSE(Root Mean Squared Error) of 2656.19 ,MAE(Mean Absolute Error) 2028.98, MPE(Mean Percentage Error) .199, MAPE(Mean Absolute Percentage Error) 2.1711, MASE(Mean Absolute Squared Error)of .1639051, and ACF1 of .0053831. The MAPE is considerably low, meaning the absolute percentage difference between the actual and fitted data is at 2.17%. The ACF and PACF of the model's residuals have been reduced to white noise as well. When looking at these metrics, its important to compare them to other models, however, which we will compare to our VAR model.
+
+```{r}
+plot(forecast(Attendence_full_model, h = 12), 
+     shadecol = 'oldstyle', main ="Attendence Forecast")
+plot(forecast(Unemployment_full_model, h= 12), 
+     shadecol = 'oldstyle', main = "Unemployment Forecast")
+
+```
+
+Because our ARIMA attendence model is (1,1,1)(2,1,0), the forecast takes recent lags to forecast future events. The model seems to be capturing the short term dynamics within the 12 month period. Our forecast is situated at a 95% confidence interval.
+
+Our ARIMA model for unemployment is (0,1,1)(2,1,0). It looks like our forecast for unemployment is looking at the recent trend as opposed to looking at the entire data set. Otherwise, the trend might have increased over the 12 month period. Our forecast is situated at a 95% confidence interval.
+
+
+##Part I: Var Model
+
+```{r}
+library('tseries')
+library('vars')
+combined_data <- (na.remove(cbind(Attendence, Unemployment)))
+tot_combo <- data.frame(combined_data)
+VARselect(tot_combo)
+
+```
+
+For our model, we picked order 6 because AIC tends to overparameterize when compared to BIC.
+
+```{r}
+var_model<-VAR(tot_combo, p = 6)
+summary(var_model)
+
+```
+
+When looking at the diagnostics, for predicting attendence, we have an adjusted R^2 of .6385. Most of the parameters are statistically insignficant except for prediction variables of attendence at lag 1, unemployment at lag 3, and unemployment at lag 5. 
+
+When looking at the diagnostics for predicting unemployment, we have a very high adjusted R^2 of .9878. Three of the parameters, attendence at lag 1, unemployment at lag 1, and attendence at lag 1 , are statistically signficant.
+
+
+## j.) IRF 
+The variable impulse response for attendence shows an initial spike then a quick decay.
+Cross variable impulse response that shows the effect of attendence's shock on umemployment is initially a negative spike and stays negative through out.
+
+Cross variable impulse response shows the effect of unemployment's shock on attendence is small and next to no effect
+Own variable impulse response for unemployment shows an initial spike then decay until lag 3 then spike and peak at around lag 6 then slowly decays.
+
+```{r irf}
+plot(irf(var_model))
+```
+
+## k. Granger Test
+Granger causality test shows that they both reject the null hypothesis and suggests causality between each other.Therefore the test is inconclusive.
+
+```{r granger}
+grangertest(Attendence ~ Unemployment, order = 6)
+grangertest(Unemployment ~ Attendence, order = 6)
+```
+
+## l. VAR forecast
+The VAR prediction seems to have similar pattern as the ARMA prediction but smaller fluctuations.
+
+```{r adsd}
+
+varpred = predict(object = var_model, n.ahead = 12, level = .95)
+plot(varpred)
+par(mfrow=c(2,1))
+plot(forecast(Attendence_full_model, h = 12),
+     shadecol = 'oldstyle', main ="Attendence Forecast")
+plot(forecast(Unemployment_full_model, h= 12),
+     shadecol = 'oldstyle', main = "Unemployment Forecast")
+
+print("ARIMA Attendence Model Diagnostics:")
+accuracy(Attendence_full_model)
+print("ARIMA Unemployment Model Diagnostics:")
+accuracy(Unemployment_full_model)
+print("VAR Attendence Model Diagnostics:")
+accuracy(var_model$varresult$Attendence)
+print("VAR Unemployment Model Diagnostics:")
+accuracy(var_model$varresult$Unemployment)
+
+AIC(var_model$varresult$Attendence,Attendence_full_model)
+AIC(var_model$varresult$Unemployment,Unemployment_full_model)
+BIC(var_model$varresult$Attendence,Attendence_full_model)
+BIC(var_model$varresult$Unemployment,Unemployment_full_model)
+```
+
+When we look at the diagnostics for both models, AIC, BIC, and most mean error claims are better for the ARIMA models. Therefore, we should use the ARIMA models instead of the VAR because the time series of unemployment or attendence does not do enough of a job to predict attendence and vice versa.  The other problem might be unemployment is essentially uncorrelated to the daily attendence and therefore might not be the best dataset to be used in a VAR model. In the future, we can maybe use retail sales data or other local museum/recreational service's number of visitors as the second dataset.
